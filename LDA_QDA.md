@@ -197,7 +197,7 @@ p2 <- lda_predict(fitter_lda, test_set[, 1:4])$class
 ```
 
 
-**Classification with LDA **
+**Classification with LDA**
 
 
 ```r
@@ -519,7 +519,7 @@ predictor
 
 
 
-##Confusion Matrix
+## Confusion Matrix
 
 
 ```r
