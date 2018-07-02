@@ -127,9 +127,7 @@ $(document).ready(function () {
 
 <div id="lda" class="section level1">
 <h1>1) LDA</h1>
-<pre class="r"><code>library(mvtnorm)
-library(tinytex)</code></pre>
-<pre><code>## Warning: package 'tinytex' was built under R version 3.4.4</code></pre>
+<pre class="r"><code>library(mvtnorm)</code></pre>
 <pre class="r"><code>set.seed(100)
 train_idx &lt;- sample(nrow(iris), 90)
 train_set &lt;- iris[train_idx, ]
