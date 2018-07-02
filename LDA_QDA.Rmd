@@ -1,0 +1,265 @@
+---
+title: "LDA_QDA"
+author: "Julien Jaber"
+date: "6/21/2018"
+output:
+  html_document: 
+    keep_md: yes
+  pdf_document: default
+---
+
+# 1) LDA
+
+```{r}
+library(mvtnorm)
+```
+
+```{r}
+set.seed(100)
+train_idx <- sample(nrow(iris), 90)
+train_set <- iris[train_idx, ]
+test_set <- iris[-train_idx, ]
+```
+
+
+**Function lda_fit outputs prior probabilities, group means, and covariance matrix**
+
+```{r}
+lda_fit <- function(X, y) {
+  
+  nk <- as.vector(table(y))
+  n = length(y)
+  k <- length(unique(y))
+  levs <- levels(y)
+  W <- 0
+  
+  centroids <- matrix(0, ncol(X), k)
+  for (j in 1:ncol(X)) {        #Find centroid for every column
+  centroids[j,] <- tapply(X[,j], y, FUN=mean)
+  }
+  
+  dimnames(centroids) <- list(colnames(X), levels(y))
+  
+  for (j in 1:k) { #LOOPING THROUGH all classes
+    Xk <- scale(X[y == levs[j], ], scale = FALSE) #Xk are all observations centered
+    W <- W + t(Xk) %*% Xk
+  }
+  
+  pi_hat <- nk/n
+  mu_hat <- t(centroids)
+  sigma_hat <- 1/(n - k) * W
+  
+  l1 <- list(pi_hat, mu_hat, sigma_hat)
+  names(l1) <- c("pi_hat", "mu_hat", "sigma_hat")  
+
+  return(l1)
+}
+
+fitter_lda <- lda_fit(train_set[, 1:4], train_set$Species)
+```
+
+
+**Function lda_predict() outputs class and posterior probabilities**
+
+```{r}
+lda_predict <- function(fit, newdata) {
+  
+  mat <- matrix(0, ncol = 4, nrow = nrow(newdata))
+  ThreeSaver <- c()
+  
+  for (i in 1:nrow(newdata)) { #loop through rows
+    for (k in 1:length(fit$pi_hat)) {  #loops through all groups
+      
+      delta = log(fit$pi_hat[k]) - 0.5 * t(as.matrix(fit$mu_hat[k,])) %*%   solve(as.matrix(fit$sigma_hat)) %*% as.matrix(fit$mu_hat[k,]) + t(as.matrix(fit$mu_hat[k,])) %*% solve(as.matrix(fit$sigma_hat)) %*% t(as.matrix(newdata[i,]))
+      
+      ThreeSaver <- c(ThreeSaver, delta)
+    }
+    
+    mat[i, ] = c(ThreeSaver, 0)
+    ThreeSaver <- c() #make it empty again
+  }
+  
+  classer = mat[, 4]
+  
+  probMatrix <- matrix(0, ncol = length(fit$pi_hat) , nrow = nrow(newdata)) #creates empty probability matrix
+  
+  for (i in 1:nrow(newdata)) {  #loops through all rows
+    for (k in 1:length(fit$pi_hat)) {   #loops through species
+      
+    num <- dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[k, ], fit$sigma_hat) * fit$pi_hat[k]
+    
+    denom <- fit$pi_hat[1] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[1, ], fit$sigma_hat) + fit$pi_hat[2] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[2, ], fit$sigma_hat) + fit$pi_hat[3] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[3, ], fit$sigma_hat)
+    
+    total = num / denom
+    probMatrix[i, k] = total
+    }
+  }
+  largestElem <- apply(probMatrix, 1, which.max) #INDEX OF LARGEST ELEMENT
+
+  largestElem <- gsub(1, "setosa", largestElem)
+  largestElem <- gsub(2, "versicolor", largestElem)
+  largestElem <- gsub(3, "virginica", largestElem)
+  
+  l1 <- list(largestElem, probMatrix)
+  names(l1) <- c("class", "posterior")
+  return(l1)
+}
+
+
+lda_predict(fitter_lda, test_set[, 1:4])
+
+p2 <- lda_predict(fitter_lda, test_set[, 1:4])$class
+```
+
+
+**Classification with LDA **
+
+```{r}
+library(MASS)
+training <- c(1:47, 51:97, 101:146)
+testing <- c(48:50, 98:100, 147:150)
+irisDataset = iris
+irisDataset$enumerate = 1:150
+
+trained <- subset(iris, irisDataset$enumerate %in% training)
+tested <- subset(iris, irisDataset$enumerate %in% testing)
+
+fitter <- lda_fit(trained[, 1:4], trained[, 5])
+predictor <- lda_predict(fitter, tested[, 1:4])
+
+fitter
+predictor
+```  
+
+
+# QDA
+
+**Function lda_fit outputs prior probabilities, group means, and covariance matrixes for every class**
+
+```{r}
+qda_fit <- function(X, y) {
+  
+  nk <- as.vector(table(y))
+  n = length(y)
+  k <- length(unique(y))
+  levs <- levels(y)
+  W <- 0
+  
+  centroids <- matrix(0, ncol(X), k)
+  for (j in 1:ncol(X)) {                #Find centroid for every column
+  centroids[j,] <- tapply(X[,j], y, FUN=mean)
+  }
+  
+  dimnames(centroids) <- list(colnames(X), levels(y))
+  
+  k = 3; p = ncol(X)
+  arr <- array(NA, c(p,p,k)) #array with dim = p x p, and k matrices
+  
+  for (j in 1:k) { #Loops through all groups
+    Xk <- scale(X[y == levs[j], ], scale = FALSE) #Xk are all observations centered
+    W <- W + t(Xk) %*% Xk
+    arr[ , , j] = 1/(50 - 1) * W
+    W = 0
+  }
+  
+  pi_hat <- nk/n
+  mu_hat <- t(centroids)
+  
+  
+  l1 <- list(pi_hat, mu_hat, arr)
+  names(l1) <- c("pi_hat", "mu_hat", "sigma_hat")  
+
+  return(l1)
+}
+
+
+fitter_qda <- qda_fit(train_set[, 1:4], train_set$Species)
+```
+
+**Function lda_predict() outputs class and posterior probabilities**
+
+```{r}
+predict_qda <- function(fit, newdata) { #newdata is X
+  
+  mat <- matrix(0, ncol = 4, nrow = nrow(newdata))
+  ThreeSaver <- c()
+  
+  for (i in 1:nrow(newdata)) { #loop through rows
+    for (k in 1:length(fit$pi_hat)) {  #loops through all groups
+      
+      delta = log(fit$pi_hat[k]) - 0.5 * t(as.matrix(fit$mu_hat[k,])) %*%   solve(as.matrix(fit$sigma_hat[, , k])) %*% as.matrix(fit$mu_hat[k,]) + t(as.matrix(fit$mu_hat[k,])) %*% solve(as.matrix(fit$sigma_hat[, , k])) %*% t(as.matrix(newdata[i,]))
+      
+      ThreeSaver <- c(ThreeSaver, delta)
+    }
+    
+    mat[i, ] = c(ThreeSaver, 0)
+    ThreeSaver <- c() #make it empty again
+  }
+  
+  classer = mat[, 4]
+  
+  probMatrix <- matrix(0, ncol = length(fit$pi_hat) , nrow = nrow(newdata)) #creates empty probability matrix
+  
+  for (i in 1:nrow(newdata)) {  #loops through all rows
+    for (k in 1:length(fit$pi_hat)) {   #loops through species
+      
+    num <- dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[k, ], 
+                   fit$sigma_hat[ , , k]) * fit$pi_hat[k]
+    
+    denom <- fit$pi_hat[1] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[1, ], fit$sigma_hat[, , 1]) + fit$pi_hat[2] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[2, ], fit$sigma_hat[, , 2]) + fit$pi_hat[3] * dmvnorm(c(newdata[i, 1], newdata[i, 2], newdata[i, 3], newdata[i, 4]), fit$mu_hat[3, ], fit$sigma_hat[, , 3])
+    
+    total = num / denom
+    probMatrix[i, k] = total
+    }
+  }
+  
+  largestElem <- apply(probMatrix, 1, which.max) #INDEX OF LARGEST ELEMENT
+
+  largestElem <- gsub(1, "setosa", largestElem)
+  largestElem <- gsub(2, "versicolor", largestElem)
+  largestElem <- gsub(3, "virginica", largestElem)
+
+  
+  #tot = colSums(mat != 0)
+  l1 <- list(largestElem, probMatrix)
+  names(l1) <- c("class", "posterior")
+  return(l1)
+
+}
+
+predict_qda(fitter_qda, test_set[, 1:4])
+p3 <- predict_qda(fitter_qda, test_set[, 1:4])$class
+```
+
+## 2.3) Classification with QDA
+
+```{r}
+training <- c(1:47, 51:97, 101:146)
+testing <- c(48:50, 98:100, 147:150)
+irisDataset$enumerate = 1:150
+
+trained <- subset(iris, irisDataset$enumerate %in% training)
+tested <- subset(iris, irisDataset$enumerate %in% testing)
+
+fitter <- qda_fit(trained[, 1:4], trained[, 5])
+predictor <- predict_qda(fitter, tested[, 1:4])
+
+fitter
+predictor
+```
+
+
+
+##Confusion Matrix
+
+```{r}
+tab1 <- table(Predicted = p2, Actual = test_set[, 5])
+tab1
+sum(diag(tab1))/sum(tab1) * 100
+```
+
+```{r}
+tab1 <- table(Predicted = p3, Actual = test_set[, 5])
+tab1
+sum(diag(tab1))/sum(tab1) * 100
+```
