@@ -3,7 +3,8 @@ title: "LDA_QDA"
 author: "Julien Jaber"
 date: "6/21/2018"
 output:
-  html_document: default
+  html_document: 
+    keep_md: yes
   pdf_document: default
 ---
 
